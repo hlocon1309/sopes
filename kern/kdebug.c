@@ -67,6 +67,12 @@ debuginfo_rip(uintptr_t addr, struct Ripdebuginfo *info) {
 
     // LAB 2: Your res here:
 
+    int lineno_store;
+    addr = addr - 5;
+    res = line_for_address(&addrs, addr, line_offset, &lineno_store);
+    if (res < 0) goto error;
+    info->rip_line = lineno_store;
+
     /* Find function name corresponding to given address.
     * Hint: note that we need the address of `call` instruction, but rip holds
     * address of the next instruction, so we should substract 5 from it.
@@ -75,6 +81,12 @@ debuginfo_rip(uintptr_t addr, struct Ripdebuginfo *info) {
     * string returned by function_by_info will always be */
 
     // LAB 2: Your res here:
+
+    char *buf = NULL;
+    res = function_by_info(&addrs, addr, offset, &buf, &info->rip_fn_addr);
+    if (res < 0) goto error;
+    strncpy(info->rip_fn_name, tmp_buf, sizeof(info->rip_fn_name));
+    info->rip_fn_namelen = strnlen(info->rip_fn_name, sizeof(info->rip_fn_name));
 
 error:
     return res;

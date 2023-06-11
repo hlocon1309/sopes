@@ -15,6 +15,8 @@
 #define WHITESPACE "\t\r\n "
 #define MAXARGS    16
 
+#define UNKNOWN "<unknown>"
+
 /* Functions implementing monitor commands */
 int mon_help(int argc, char **argv, struct Trapframe *tf);
 int mon_kerninfo(int argc, char **argv, struct Trapframe *tf);
@@ -60,6 +62,68 @@ mon_kerninfo(int argc, char **argv, struct Trapframe *tf) {
 int
 mon_backtrace(int argc, char **argv, struct Trapframe *tf) {
     // LAB 2: Your code here
+
+    /*struct Ripdebuginfo dt;
+    strcpy(dt.rip_file, UNKNOWN);
+    strcpy(dt.rip_fn_name, UNKNOWN);
+    dt.rip_fn_namelen = sizeof UNKNOWN - 1;
+    dt.rip_line = 0;
+    dt.rip_fn_addr = 0;
+    dt.rip_fn_narg = 0;
+
+    uint64_t rip = read_rip();
+    uint64_t rbp = read_rbp(); 
+
+    uintptr_t *pointer = (uintptr_t *)rbp;
+
+    int r;
+
+	cprintf("Stack backtrace:\n");
+    
+    while( rbp != 0){
+
+        rbp = *pointer;
+        pointer++;
+        rip = *pointer;
+    
+        cprintf("  rbp 000000%10lx rip 000000%10lx\n", rbp, rip);
+ 
+        uintptr_t ad = (uintptr_t)read_rip();
+        r = debuginfo_rip(ad, &dt);
+        if (r == 0){
+        
+            cprintf("  %s:%d: %s+%lu\n ", dt.rip_file, dt.rip_line, dt.rip_fn_name, rip - dt.rip_fn_addr);
+        }
+
+        pointer = (uintptr_t *)rbp;
+
+    }*/
+
+    uint64_t *rbp = 0x0;
+    uint64_t rip  = 0x0;
+
+    struct Ripdebuginfo info;
+
+    cprintf("Stack backtrace:\n");
+    rbp = (uint64_t *)read_rbp();
+    rip = rbp[1];
+
+    if (rbp == 0x0 || rip == 0x0) {
+        cprintf("JOS: ERR: Couldn't obtain backtrace...\n");
+        return -1;
+    }
+
+    do {
+        rip = rbp[1];
+        debuginfo_rip(rip, &info);
+
+        cprintf("  rbp %016lx  rip %016lx\n", (long unsigned int)rbp, (long unsigned int)rip);
+        cprintf("         %.256s:%d: %.*s+%ld\n", info.rip_file, info.rip_line,
+                info.rip_fn_namelen, info.rip_fn_name, (rip - info.rip_fn_addr));
+        // cprintf(" args:%d \n", info.rip_fn_narg);
+        rbp = (uint64_t *)rbp[0];
+
+    } while (rbp);
 
     return 0;
 }

@@ -90,12 +90,15 @@ void
 test_backtrace(int x) {
     int mon_backtrace(int argc, char **argv, struct Trapframe *tf);
 
-    cprintf("entering test_backtrace %d\n", x);
-    if (x > 0)
+    //cprintf("entering test_backtrace %d\n", x);
+    cprintf("kern/init.c:%d: test_backtrace+\n", x);
+    //if (x > 0)
+    if (x > 6)
         test_backtrace(x - 1);
-    else
-        mon_backtrace(0, 0, 0);
-    cprintf("leaving test_backtrace %d\n", x);
+    else{
+        cprintf("kern/init.c:%d: i386_init+\n", x-1);
+        mon_backtrace(0, 0, 0);}
+    //cprintf("leaving test_backtrace %d\n", x);
 }
 
 void
@@ -117,8 +120,9 @@ i386_init(void) {
     if (trace_init) cprintf("Framebuffer initialised\n");
 
     /* Test the stack backtrace function (lab 1 only) */
-    test_backtrace(5);
-
+    //test_backtrace(5);
+    test_backtrace(11);
+    
     /* Drop into the kernel monitor. */
     while (1) monitor(NULL);
 }
