@@ -280,15 +280,15 @@ load_icode(struct Env *env, uint8_t *binary) {
 //load_icode(struct Env *env, uint8_t *binary, size_t size) {
     // LAB 3: Your code here
 
-    struct Elf *elf = (struct Elf *)binary; // binary приодится к типу указателя на структуру ELF
+    struct Elf *elf = (struct Elf *)binary;
     if (elf->e_magic != ELF_MAGIC) {
         cprintf("Unexpected ELF format\n");
         return -1;
     }
 
-    struct Proghdr *ph = (struct Proghdr *)(binary + elf->e_phoff); // Proghdr = prog header. Он лежит со смещением elf->e_phoff относительно начала фаила
+    struct Proghdr *ph = (struct Proghdr *)(binary + elf->e_phoff);
 
-    for (size_t i = 0; i < elf->e_phnum; i++) { //elf->e_phnum - Число заголовков программы. Если у файла нет таблицы заголовков программы, это поле содержит 0.
+    for (size_t i = 0; i < elf->e_phnum; i++) { 
         if (ph[i].p_type == ELF_PROG_LOAD) {
             void *src = binary + ph[i].p_offset;
             void *dst = (void *)ph[i].p_va;
@@ -296,13 +296,13 @@ load_icode(struct Env *env, uint8_t *binary) {
             size_t memsz  = ph[i].p_memsz;
             size_t filesz = MIN(ph[i].p_filesz, memsz);
 
-            memcpy(dst, src, filesz);                // копируем в dst (дистинейшн) src (код) размера filesz
-            memset(dst + filesz, 0, memsz - filesz); // обнуление памяти по адресу dst + filesz, где количество нулей = memsz - filesz. Т.е. зануляем всю выделенную память сегмента кода, оставшуюяся после копирования src. Возможно, эта строка не нужна
+            memcpy(dst, src, filesz);                
+            memset(dst + filesz, 0, memsz - filesz);
             }
 
-            env->env_tf.tf_rip = elf->e_entry; //Виртуальный адрес точки входа, которому система передает управление при запуске процесса. в регистр rip записываем адрес точки входа для выполнения процесса
+            env->env_tf.tf_rip = elf->e_entry;
 
-            bind_functions(env, binary); // Вызывается bind_functions, который связывает все что мы сделали выше (инициализация среды) с "кодом" самого процесса
+            bind_functions(env, binary);
         };
 
     return 0;
@@ -320,7 +320,7 @@ env_create(uint8_t *binary, size_t size, enum EnvType type) {
     
     struct Env *newenv;
     if (env_alloc(&newenv, 0, type) < 0) {
-        panic("Can't allocate new environment");  // попытка выделить среду – если нет – вылет по панике ядра
+        panic("Can't allocate new environment");
     }
     
     newenv->env_type = type;
@@ -355,10 +355,10 @@ env_destroy(struct Env *env) {
 
     // LAB 3: Your code here
 
-    env->env_status = ENV_DYING; // environment died, long live new environment (not here)!
+    env->env_status = ENV_DYING;
     if (env == curenv) {
-        env_free(env); // очистка среды
-        sched_yield(); // вызывается функция, обрабатывающая смену/удаление среды
+        env_free(env);
+        sched_yield();
     }
 
 }
@@ -453,23 +453,23 @@ env_run(struct Env *env) {
 
     // LAB 3: Your code here
 
-    if (curenv) {  // if curenv == False, значит, какого-нибудь исполняемого процесса нет
-        if (curenv->env_status == ENV_DYING) { // если процесс стал зомби
-            struct Env *old = curenv;  // ставим старый адрес
-            env_free(curenv);  // самурай запятнал свой env – убираем его в ножны дабы стереть кровь
-            if (old == env) { // e - аргумент функции, который к нам пришел
-                sched_yield();  // переключение системными вызовами 
+    if (curenv) { 
+        if (curenv->env_status == ENV_DYING) { 
+            struct Env *old = curenv;
+            env_free(curenv);
+            if (old == env) {
+                sched_yield();
             }
-        } else if (curenv->env_status == ENV_RUNNING) { // если процесс можем запустить
-            curenv->env_status = ENV_RUNNABLE;  // запускаем процесс
+        } else if (curenv->env_status == ENV_RUNNING) {
+            curenv->env_status = ENV_RUNNABLE;
         }
     }
     
-    curenv = env;  // текущая среда – е
-    curenv->env_status = ENV_RUNNING; // устанавливаем статус среды на "выполняется"
-    curenv->env_runs++; // обновляем количество запусков контекста процесса
+    curenv = env;
+    curenv->env_status = ENV_RUNNING;
+    curenv->env_runs++;
     
-    env_pop_tf(&curenv->env_tf); // восстанавливаем из curen все переменные окружения
+    env_pop_tf(&curenv->env_tf);
 
     while(1) {}
 }
