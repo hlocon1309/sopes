@@ -90,6 +90,19 @@ env_init(void) {
 
     // LAB 3: Your code here
 
+    env_free_list = NULL;
+    for (int i = NENV - 1; i >= 0; i--) { 
+       
+        envs[i].env_link = env_free_list;
+        envs[i].env_id   = 0;
+        env_free_list    = &envs[i];
+    }
+
+}
+
+envid_t 
+curenv_getid() {
+    return curenv->env_id;
 }
 
 /* Allocates and initializes a new environment.
@@ -146,13 +159,21 @@ env_alloc(struct Env **newenv_store, envid_t parent_id, enum EnvType type) {
     env->env_tf.tf_cs = GD_KT;
 
     // LAB 3: Your code here:
-    //static uintptr_t stack_area_start = 0x2000000;
+    static uintptr_t stack_area_start = 0x2000000;
+    env->env_tf.tf_rsp = stack_area_start;
+    stack_area_start -= 2 * PAGE_SIZE;
+    //cprintf("Si llega -> Kernel Mode: ");
+    
+    // For now init trapframe with current RFLAGS
+    env->env_tf.tf_rflags = read_rflags();
+
 #else
     env->env_tf.tf_ds = GD_UD | 3;
     env->env_tf.tf_es = GD_UD | 3;
     env->env_tf.tf_ss = GD_UD | 3;
     env->env_tf.tf_cs = GD_UT | 3;
     env->env_tf.tf_rsp = USER_STACK_TOP;
+    cprintf("Si llega -> User Mode: ");
 #endif
 
     /* Commit the allocation */
@@ -169,10 +190,47 @@ env_alloc(struct Env **newenv_store, envid_t parent_id, enum EnvType type) {
  * must be performed within the image_start/image_end range.
  */
 static int
-bind_functions(struct Env *env, uint8_t *binary, size_t size, uintptr_t image_start, uintptr_t image_end) {
+bind_functions(struct Env *env, uint8_t *binary) {
+//bind_functions(struct Env *env, uint8_t *binary, size_t size, uintptr_t image_start, uintptr_t image_end) {
     // LAB 3: Your code here:
 
     /* NOTE: find_function from kdebug.c should be used */
+    
+    struct Elf *elf    = (struct Elf *)binary;
+    struct Secthdr *sh = (struct Secthdr *)(binary + elf->e_shoff);
+    const char *shstr  = (char *)binary + sh[elf->e_shstrndx].sh_offset;
+    
+    // Find string table
+    size_t strtab = -1UL;
+    for (size_t i = 0; i < elf->e_shnum; i++) {
+        if (sh[i].sh_type == ELF_SHT_STRTAB && !strcmp(".strtab", shstr + sh[i].sh_name)) {
+            strtab = i;
+            break;
+        }
+    }
+    
+    const char *strings = (char *)binary + sh[strtab].sh_offset;
+    
+    for (size_t i = 0; i < elf->e_shnum; i++) {
+        if (sh[i].sh_type == ELF_SHT_SYMTAB) {
+            struct Elf64_Sym *syms = (struct Elf64_Sym *)(binary + sh[i].sh_offset);
+            
+            size_t nsyms = sh[i].sh_size / sizeof(*syms);
+            
+            for (size_t j = 0; j < nsyms; j++) {
+                // Only handle symbols that we know how to bind
+                if (ELF64_ST_BIND(syms[j].st_info) == STB_GLOBAL && ELF64_ST_TYPE(syms[j].st_info) == STT_OBJECT &&
+                    syms[j].st_size == sizeof(void *)) {
+                        const char *name = strings + syms[j].st_name;
+                        uintptr_t addr = find_function(name);
+                        
+                        if (addr) {
+                            memcpy((void *)syms[j].st_value, &addr, sizeof(void *));
+                        }
+                }
+            }
+        }
+    }
 
     return 0;
 }
@@ -218,8 +276,34 @@ bind_functions(struct Env *env, uint8_t *binary, size_t size, uintptr_t image_st
  *   to make sure that the environment starts executing there.
  *   What?  (See env_run() and env_pop_tf() below.) */
 static int
-load_icode(struct Env *env, uint8_t *binary, size_t size) {
+load_icode(struct Env *env, uint8_t *binary) {
+//load_icode(struct Env *env, uint8_t *binary, size_t size) {
     // LAB 3: Your code here
+
+    struct Elf *elf = (struct Elf *)binary; // binary приодится к типу указателя на структуру ELF
+    if (elf->e_magic != ELF_MAGIC) {
+        cprintf("Unexpected ELF format\n");
+        return -1;
+    }
+
+    struct Proghdr *ph = (struct Proghdr *)(binary + elf->e_phoff); // Proghdr = prog header. Он лежит со смещением elf->e_phoff относительно начала фаила
+
+    for (size_t i = 0; i < elf->e_phnum; i++) { //elf->e_phnum - Число заголовков программы. Если у файла нет таблицы заголовков программы, это поле содержит 0.
+        if (ph[i].p_type == ELF_PROG_LOAD) {
+            void *src = binary + ph[i].p_offset;
+            void *dst = (void *)ph[i].p_va;
+
+            size_t memsz  = ph[i].p_memsz;
+            size_t filesz = MIN(ph[i].p_filesz, memsz);
+
+            memcpy(dst, src, filesz);                // копируем в dst (дистинейшн) src (код) размера filesz
+            memset(dst + filesz, 0, memsz - filesz); // обнуление памяти по адресу dst + filesz, где количество нулей = memsz - filesz. Т.е. зануляем всю выделенную память сегмента кода, оставшуюяся после копирования src. Возможно, эта строка не нужна
+            }
+
+            env->env_tf.tf_rip = elf->e_entry; //Виртуальный адрес точки входа, которому система передает управление при запуске процесса. в регистр rip записываем адрес точки входа для выполнения процесса
+
+            bind_functions(env, binary); // Вызывается bind_functions, который связывает все что мы сделали выше (инициализация среды) с "кодом" самого процесса
+        };
 
     return 0;
 }
@@ -233,6 +317,14 @@ load_icode(struct Env *env, uint8_t *binary, size_t size) {
 void
 env_create(uint8_t *binary, size_t size, enum EnvType type) {
     // LAB 3: Your code here
+    
+    struct Env *newenv;
+    if (env_alloc(&newenv, 0, type) < 0) {
+        panic("Can't allocate new environment");  // попытка выделить среду – если нет – вылет по панике ядра
+    }
+    
+    newenv->env_type = type;
+    load_icode(newenv, binary); // load instruction code
 
 }
 
@@ -262,6 +354,12 @@ env_destroy(struct Env *env) {
      * it traps to the kernel. */
 
     // LAB 3: Your code here
+
+    env->env_status = ENV_DYING; // environment died, long live new environment (not here)!
+    if (env == curenv) {
+        env_free(env); // очистка среды
+        sched_yield(); // вызывается функция, обрабатывающая смену/удаление среды
+    }
 
 }
 
@@ -354,6 +452,24 @@ env_run(struct Env *env) {
     }
 
     // LAB 3: Your code here
+
+    if (curenv) {  // if curenv == False, значит, какого-нибудь исполняемого процесса нет
+        if (curenv->env_status == ENV_DYING) { // если процесс стал зомби
+            struct Env *old = curenv;  // ставим старый адрес
+            env_free(curenv);  // самурай запятнал свой env – убираем его в ножны дабы стереть кровь
+            if (old == env) { // e - аргумент функции, который к нам пришел
+                sched_yield();  // переключение системными вызовами 
+            }
+        } else if (curenv->env_status == ENV_RUNNING) { // если процесс можем запустить
+            curenv->env_status = ENV_RUNNABLE;  // запускаем процесс
+        }
+    }
+    
+    curenv = env;  // текущая среда – е
+    curenv->env_status = ENV_RUNNING; // устанавливаем статус среды на "выполняется"
+    curenv->env_runs++; // обновляем количество запусков контекста процесса
+    
+    env_pop_tf(&curenv->env_tf); // восстанавливаем из curen все переменные окружения
 
     while(1) {}
 }
