@@ -10,6 +10,9 @@
 
 .globl entry
 entry:
+
+    cli // -> Lab4
+
     # Set up kernel stack
     leaq bootstacktop(%rip),%rsp
     xor %ebp, %ebp
@@ -73,6 +76,8 @@ sys_yield:
 .globl sys_exit
 .type  sys_exit, @function
 sys_exit:
+
+    cli // -> Lab4
 
     leaq bootstacktop(%rip),%rsp
     xor %ebp, %ebp

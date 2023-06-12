@@ -95,6 +95,15 @@ trapname(int trapno) {
 void
 trap_init(void) {
     // LAB 4: Your code here
+    //extern void (*clock_thdlr)(void);
+
+    uint16_t mask = 0xFFFF & ~(1 << IRQ_CLOCK);
+    pic_irq_unmask(mask);
+
+    // init idt structure
+    //SETGATE(idt[IRQ_OFFSET + IRQ_TIMER], 0, GD_KT, (uintptr_t)(&clock_thdlr), 0);
+    //SETGATE(idt[IRQ_OFFSET + IRQ_CLOCK], 0, GD_KT, (uintptr_t)(&clock_thdlr), 0);
+    //lidt(&idt_pd);
 
 
     /* Per-CPU setup */
